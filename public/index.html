@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Generador de Licencias</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      padding: 2rem;
+      text-align: center;
+      color: #333;
+    }
+    h1, h2 {
+      margin-bottom: 1rem;
+    }
+    input, button {
+      padding: 0.6rem;
+      margin: 0.5rem;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      font-size: 1rem;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      cursor: pointer;
+      border: none;
+      transition: background-color 0.2s ease-in-out;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    #output {
+      margin-top: 1rem;
+      background: #fff;
+      border: 1px solid #ddd;
+      padding: 1rem;
+      border-radius: 5px;
+      display: inline-block;
+      text-align: left;
+      max-width: 600px;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+    table {
+      margin: 2rem auto 0 auto;
+      border-collapse: collapse;
+      width: 90%;
+      max-width: 800px;
+      background: white;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 0.75rem;
+      vertical-align: middle;
+    }
+    th {
+      background-color: #f0f0f0;
+    }
+    tr:nth-child(even) {
+      background-color: #fafafa;
+    }
+    .delete-btn {
+      background-color: #e74c3c;
+      padding: 0.4rem 0.8rem;
+      border: none;
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.2s ease-in-out;
+    }
+    .delete-btn:hover {
+      background-color: #c0392b;
+    }
+    input[type=number] {
+      width: 150px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Generador de Licencias</h1>
+
+  <input id="user" placeholder="Nombre de usuario" />
+  <input id="days" type="number" placeholder="Días válidos (ej. 30)" min="1" />
+  <button onclick="generate()">Generar</button>
+
+  <div id="output"></div>
+
+  <div id="listado">
+    <h2>Licencias Generadas</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Usuario</th>
+          <th>Licencia</th>
+          <th>Expira</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="tbody">
+        <!-- Licencias cargadas aquí -->
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    let licencias = [];
+
+    async function fetchLicencias() {
+      try {
+        const res = await fetch('/.netlify/functions/list');
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          licencias = data;
+          renderTable();
+        } else {
+          alert('Error al cargar licencias.');
+        }
+      } catch (e) {
+        alert('Error de conexión al cargar licencias.');
+      }
+    }
+
+    async function generate() {
+      const user = document.getElementById('user').value.trim();
+      const days = parseInt(document.getElementById('days').value) || 30;
+
+      if (!user) {
+        alert("Ingresa un nombre de usuario.");
+        return;
+      }
+      if (days < 1) {
+        alert("Ingresa un número válido de días.");
+        return;
+      }
+
+      try {
+        const res = await fetch('/.netlify/functions/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user, days }),
+        });
+
+        const data = await res.json();
+        if (data.error) {
+          alert('Error: ' + data.error);
+          return;
+        }
+
+        document.getElementById('output').innerText =
+          `Licencia generada:\n${data.license}\nExpira: ${new Date(data.expiresAt).toLocaleString()}`;
+
+        await fetchLicencias();
+
+        document.getElementById('user').value = '';
+        document.getElementById('days').value = '';
+
+      } catch (e) {
+        alert('Error generando licencia.');
+      }
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = '';
+
+      licencias.forEach((item) => {
+        const tr = document.createElement('tr');
+
+        const tdUser = document.createElement('td');
+        tdUser.textContent = item.usuario;
+
+        const tdLicense = document.createElement('td');
+        tdLicense.textContent = item.licencia;
+
+        const tdExpires = document.createElement('td');
+        const fecha = new Date(item.fecha_expira);
+        tdExpires.textContent = fecha.toLocaleDateString() + ' ' + fecha.toLocaleTimeString();
+
+        const tdActions = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.textContent = 'Eliminar';
+        btn.className = 'delete-btn';
+        btn.onclick = () => eliminarLicencia(item.id);
+        tdActions.appendChild(btn);
+
+        tr.appendChild(tdUser);
+        tr.appendChild(tdLicense);
+        tr.appendChild(tdExpires);
+        tr.appendChild(tdActions);
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function eliminarLicencia(id) {
+      if (!confirm('¿Seguro que quieres eliminar esta licencia?')) return;
+
+      try {
+        const res = await fetch('/.netlify/functions/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          alert('Error al eliminar licencia: ' + data.error);
+          return;
+        }
+        await fetchLicencias();
+
+      } catch (e) {
+        alert('Error al eliminar licencia.');
+      }
+    }
+
+    window.onload = fetchLicencias;
+  </script>
+</body>
+</html>
